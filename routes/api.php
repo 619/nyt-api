@@ -20,8 +20,4 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::get('/1/nyt/best-sellers', function() {
-    return "goodbye!";
-});
-
 Route::get('/1/nyt/best-sellers', [GETNYTBestSellersController::class, 'fetch']);
