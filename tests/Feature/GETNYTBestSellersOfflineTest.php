@@ -6,7 +6,6 @@ use Tests\TestCase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 
-
 class GETNYTBestSellersOfflineTest extends TestCase {
     
     public function testFetchWithNoParams() {
@@ -230,6 +229,16 @@ class GETNYTBestSellersOfflineTest extends TestCase {
         ]);
     }
 
+    public function testFetchWithTooLongAuthor() {
+        Http::fake([
+            'https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json*' => Http::response(["status" => "OK", "results" => [], "num_results" => 0], 200),
+        ]);
+        $response = $this->json('GET', 'api/1/nyt/best-sellers', ['author' => "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in repr"]);
+        
+        $response
+        ->assertStatus(422);
+    }
+
     public function testFetchReturningNoAuthor() {
         Http::fake([
             'https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json*' => Http::response([
@@ -328,5 +337,150 @@ class GETNYTBestSellersOfflineTest extends TestCase {
         ]);
         
         $response->assertJsonCount(1, 'results');
+    }
+
+    //Compound/Complex tests
+    public function testFetchReturningNoResults() {
+        Http::fake([
+            'https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json*' => Http::response([
+                'data' => [
+                    "status" => "OK",
+                    "copyright" => "Copyright (c) 2024 The New York Times Company.  All Rights Reserved.",
+                    "num_results" => 0
+                ]
+            ])
+        ], 200);
+        $response = $this->json('GET', 'api/1/nyt/best-sellers', ['title' => "Buried Dreams"]);
+        $response
+            ->assertStatus(422);
+    }
+
+    public function testFetchReturningInvalidISBNs() {
+        Http::fake([
+            'https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json*' => Http::response([
+                'data' => [
+                    "status" => "OK",
+                    "copyright" => "Copyright (c) 2024 The New York Times Company.  All Rights Reserved.",
+                    "num_results" => 1,
+                    "results" => [
+                        [   "title" => "BURIED DREAMS",
+                            "author" => "First Last",
+                            "description" => "The ghoulish case of the serial killer John Wayne Gacy. First published in 1986.",
+                            "contributor" => "by Tim Cahill",
+                            "contributor_note" => "",
+                            "price" => "0.00",
+                            "age_group" => "",
+                            "publisher" => "Premier Digital",
+                            "isbns" => [
+                            [
+                                "isbn11" => "19379570525"
+                            ]
+                            ]
+                        ]
+                    ]
+                ]
+            ])
+        ], 200);
+        $response = $this->json('GET', 'api/1/nyt/best-sellers', ['title' => "Buried Dreams"]);
+        $response
+            ->assertStatus(422);
+    }
+
+    public function testFetchWithISBNAndTitle() {
+        Http::fake([
+            'https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json*' => Http::response([
+                "status" => "OK",
+                "copyright" => "Copyright (c) 2024 The New York Times Company.  All Rights Reserved.",
+                "num_results" => 1,
+                "results" => [
+                    [
+                        "title" => "HARRY POTTER",
+                        "description" => "A wizard hones his conjuring skills in the service of fighting evil.",
+                        "contributor" => "by J.K. Rowling",
+                        "author" => "J.K. Rowling",
+                        "contributor_note" => "",
+                        "price" => "0.00",
+                        "age_group" => "",
+                        "publisher" => "Scholastic",
+                        "isbns" => [
+                        [
+                            "isbn10" => "0590353421",
+                            "isbn13" => "9780590353427"
+                        ],
+                        [
+                            "isbn10" => "0439064872",
+                            "isbn13" => "9780439064873"
+                        ]
+                        ]
+                ]
+                ]
+            ], 200),
+        ]);
+
+        $requestedISBN = "9780590353427";
+        $response = $this->json('GET', 'api/1/nyt/best-sellers', ['isbn' => "9780590353427", "title" => "harry potter"]);
+        $response
+            ->assertStatus(200);
+
+        $response->assertJsonFragment([
+            'num_results' => 1 
+        ]);
+
+        $response->assertJsonFragment([
+            'title' => 'HARRY POTTER'
+        ]);
+        
+        $decodedResponse = json_decode($response->getContent(), true);
+        $isbnDictionary = [];
+
+        foreach ($decodedResponse['results'][0]['isbns'] as $isbn) {
+            if (isset($isbn['isbn13'])) {
+                $isbnDictionary[$isbn['isbn13']] = 1;
+            }
+            if (isset($isbn['isbn10'])) {
+                $isbnDictionary[$isbn['isbn10']] = 1;
+            }
+        }
+
+        $this->assertArrayHasKey($requestedISBN, $isbnDictionary);
+        $response->assertJsonCount(1, 'results');
+    }
+
+    public function testFetchWithTypoTitleAndISBN() {
+        Http::fake([
+            'https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json*' => Http::response(["status" => "OK", "results" => [], "num_results" => 0], 200),
+        ]);
+        $response = $this->json('GET', 'api/1/nyt/best-sellers', ['isbn' => "9780590353427", "title" => "hary potter"]);
+        
+        $response
+        ->assertStatus(200)
+        ->assertJson([
+            'num_results' => 0,
+            'results' => [],
+        ]);
+    }
+
+    public function testFetchWithInvalidOffsetAndISBN() {
+        Http::fake([
+            'https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json*' => Http::response(["status" => "OK", "results" => [], "num_results" => 0], 200),
+        ]);
+        $response = $this->json('GET', 'api/1/nyt/best-sellers', ['offset' => -1, "title" => "hary potter"]);
+        
+        $response
+        ->assertStatus(422);
+    }
+
+    public function testFetchWithHarryPotterButTooHighOffset() {
+        Http::fake([
+            'https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json*' => Http::response(["status" => "OK", "results" => [], "num_results" => 0], 200),
+        ]);
+        $response = $this->json('GET', 'api/1/nyt/best-sellers', ['offset' => 20, "title" => "harry potter"]);
+        
+        $response
+        ->assertStatus(200)
+        ->assertJson([
+            'num_results' => 0,
+            'results' => [],
+        ]);
     }
 }
