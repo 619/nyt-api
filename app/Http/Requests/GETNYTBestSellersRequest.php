@@ -14,9 +14,6 @@ class GETNYTBestSellersRequest extends FormRequest
     }
 
     public function rules(): array {
-
-        //This function validates the isbn field, making sure that it is either one 10/13 digit isbn or a valid list of them.
-        //A valid list of isbns constitutes multiple valid isbns, joined by colons.
         Validator::extend('valid_isbns', function ($attribute, $value, $parameters, $validator) {
             $isbns = explode(';', $value);
     

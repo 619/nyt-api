@@ -39,6 +39,16 @@ class GETNYTBestSellersOfflineTest extends TestCase {
             ->assertStatus(422);
     }
 
+    public function testFetchWithValidOffset() {
+        Http::fake([
+            'https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json*' => Http::response(["status" => "OK", "results" => [], "num_results" => 0], 200),
+        ]);
+        $response = $this->json('GET', 'api/1/nyt/best-sellers', ['offset' => 0]);
+        
+        $response
+            ->assertStatus(200);
+    }
+
     //Title tests
     public function testFetchWithTooLongTitle() {
         Http::fake([
